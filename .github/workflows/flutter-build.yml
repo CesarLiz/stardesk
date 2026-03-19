@@ -132,10 +132,6 @@ jobs:
           targets: ${{ matrix.job.target }}
           components: "rustfmt"
 
-      #- uses: Swatinem/rust-cache@v2
-        with:
-          #prefix-key: ${{ matrix.job.os }}
-
       - name: Setup vcpkg with Github Actions binary cache
         uses: lukka/run-vcpkg@v11
         with:
@@ -326,10 +322,6 @@ jobs:
           targets: ${{ matrix.job.target }}
           components: "rustfmt"
 
-      #- uses: Swatinem/rust-cache@v2
-        with:
-          #prefix-key: ${{ matrix.job.os }}-sciter
-
       - name: Setup vcpkg with Github Actions binary cache
         uses: lukka/run-vcpkg@v11
         with:
@@ -507,11 +499,6 @@ jobs:
           targets: ${{ matrix.job.target }}
           components: "rustfmt"
 
-      #- uses: Swatinem/rust-cache@v2
-        with:
-          #prefix-key: rustdesk-lib-cache-ios
-          key: ${{ matrix.job.target }}
-
       - name: Restore bridge files
         uses: actions/download-artifact@master
         with:
@@ -670,10 +657,6 @@ jobs:
           toolchain: ${{ env.MAC_RUST_VERSION }}
           targets: ${{ matrix.job.target }}
           components: "rustfmt"
-
-      #- uses: Swatinem/rust-cache@v2
-        with:
-          #prefix-key: ${{ matrix.job.os }}
 
       - name: Restore bridge files
         uses: actions/download-artifact@master
@@ -969,11 +952,6 @@ jobs:
         with:
           toolchain: ${{ env.RUST_VERSION }}
           components: "rustfmt"
-
-      #- uses: Swatinem/rust-cache@v2
-        with:
-          #prefix-key: rustdesk-lib-cache-android # TODO: drop '-android' part after caches are invalidated
-          key: ${{ matrix.job.target }}
 
       - name: Build rustdesk lib
         env:
