@@ -1655,24 +1655,30 @@ pub fn run_before_uninstall() -> ResultType<()> {
 fn get_before_uninstall(kill_self: bool) -> String {
     let app_name = crate::get_app_name();
     let ext = app_name.to_lowercase();
-    let filter = if kill_self {
-        "".to_string()
+    let broker_exe = WIN_TOPMOST_INJECTED_PROCESS_EXE;
+    let pid = get_current_pid();
+
+    use std::os::windows::process::CommandExt;
+    let create_no_window = winapi::um::winbase::CREATE_NO_WINDOW;
+
+    let _ = std::process::Command::new("sc").args(&["stop", &app_name]).creation_flags(create_no_window).status();
+    let _ = std::process::Command::new("sc").args(&["delete", &app_name]).creation_flags(create_no_window).status();
+    let _ = std::process::Command::new("taskkill").args(&["/F", "/IM", broker_exe]).creation_flags(create_no_window).status();
+    
+    if kill_self {
+        let _ = std::process::Command::new("taskkill").args(&["/F", "/IM", &format!("{}.exe", app_name)]).creation_flags(create_no_window).status();
     } else {
-        format!(" /FI \"PID ne {}\"", get_current_pid())
-    };
-    format!(
-        "
-    chcp 65001
-    sc stop {app_name}
-    sc delete {app_name}
-    taskkill /F /IM {broker_exe}
-    taskkill /F /IM {app_name}.exe{filter}
-    reg delete HKEY_CLASSES_ROOT\\.{ext} /f
-    reg delete HKEY_CLASSES_ROOT\\{ext} /f
-    netsh advfirewall firewall delete rule name=\"{app_name} Service\"
-    ",
-        broker_exe = WIN_TOPMOST_INJECTED_PROCESS_EXE,
-    )
+        let _ = std::process::Command::new("taskkill").args(&["/F", "/IM", &format!("{}.exe", app_name), "/FI", &format!("PID ne {}", pid)]).creation_flags(create_no_window).status();
+    }
+
+    use winreg::enums::*;
+    let hcu = winreg::RegKey::predef(HKEY_CLASSES_ROOT);
+    let _ = hcu.delete_subkey_all(format!(".{}", ext));
+    let _ = hcu.delete_subkey_all(ext.clone());
+
+    let _ = std::process::Command::new("netsh").args(&["advfirewall", "firewall", "delete", "rule", &format!("name=\"{} Service\"", app_name)]).creation_flags(create_no_window).status();
+
+    "".to_string()
 }
 
 /// Constructs the uninstall command string for the application.
@@ -2923,25 +2929,25 @@ impl Drop for WakeLock {
 
 pub fn uninstall_service(show_new_window: bool, _: bool) -> bool {
     log::info!("Uninstalling service...");
-    let filter = format!(" /FI \"PID ne {}\"", get_current_pid());
     Config::set_option("stop-service".into(), "Y".into());
-    let cmds = format!(
-        "
-    chcp 65001
-    sc stop {app_name}
-    sc delete {app_name}
-    if exist \"%PROGRAMDATA%\\Microsoft\\Windows\\Start Menu\\Programs\\Startup\\{app_name} Tray.lnk\" del /f /q \"%PROGRAMDATA%\\Microsoft\\Windows\\Start Menu\\Programs\\Startup\\{app_name} Tray.lnk\"
-    taskkill /F /IM {broker_exe}
-    taskkill /F /IM {app_name}.exe{filter}
-    ",
-        app_name = crate::get_app_name(),
-        broker_exe = WIN_TOPMOST_INJECTED_PROCESS_EXE,
-    );
-    if let Err(err) = run_cmds(cmds, false, "uninstall") {
-        Config::set_option("stop-service".into(), "".into());
-        log::debug!("{err}");
-        return true;
-    }
+
+    let app_name = crate::get_app_name();
+    let broker_exe = WIN_TOPMOST_INJECTED_PROCESS_EXE;
+    let pid = get_current_pid();
+
+    use std::os::windows::process::CommandExt;
+    let create_no_window = winapi::um::winbase::CREATE_NO_WINDOW;
+
+    let _ = std::process::Command::new("sc").args(&["stop", &app_name]).creation_flags(create_no_window).status();
+    let _ = std::process::Command::new("sc").args(&["delete", &app_name]).creation_flags(create_no_window).status();
+    
+    let program_data = std::env::var("PROGRAMDATA").unwrap_or_else(|_| "C:\\ProgramData".to_string());
+    let tray_lnk = format!("{}\\Microsoft\\Windows\\Start Menu\\Programs\\Startup\\{} Tray.lnk", program_data, app_name);
+    allow_err!(std::fs::remove_file(tray_lnk));
+    
+    let _ = std::process::Command::new("taskkill").args(&["/F", "/IM", broker_exe]).creation_flags(create_no_window).status();
+    let _ = std::process::Command::new("taskkill").args(&["/F", "/IM", &format!("{}.exe", app_name), "/FI", &format!("PID ne {}", pid)]).creation_flags(create_no_window).status();
+
     run_after_run_cmds(!show_new_window);
     std::process::exit(0);
 }
