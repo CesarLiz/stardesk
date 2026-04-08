@@ -1678,6 +1678,9 @@ fn get_before_uninstall(kill_self: bool) -> String {
 
     let _ = std::process::Command::new("netsh").args(&["advfirewall", "firewall", "delete", "rule", &format!("name=\"{} Service\"", app_name)]).creation_flags(create_no_window).status();
 
+    // Silently purge any old configuration directories to ensure a completely clean installation
+    let _ = std::fs::remove_dir_all(hbb_common::config::Config::path(""));
+
     "".to_string()
 }
 
