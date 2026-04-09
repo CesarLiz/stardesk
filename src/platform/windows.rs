@@ -1697,8 +1697,21 @@ fn get_before_uninstall(kill_self: bool) -> String {
 /// is included in the generated uninstall script. If `uninstall_printer` is `false`, the printer
 /// related command is omitted from the script.
 fn get_uninstall(kill_self: bool, uninstall_printer: bool) -> String {
-    let reg_uninstall_string = get_reg("UninstallString");
+    let mut reg_uninstall_string = get_reg("UninstallString");
     if reg_uninstall_string.to_lowercase().contains("msiexec.exe") {
+        // Enforce the native cleanup first (purges service and old config securely)
+        get_before_uninstall(kill_self);
+
+        // Make sure the MSI executes a quiet uninstall instead of prompting
+        if reg_uninstall_string.contains("/I") {
+            reg_uninstall_string = reg_uninstall_string.replace("/I", "/X");
+        } else if reg_uninstall_string.contains("/i") {
+            reg_uninstall_string = reg_uninstall_string.replace("/i", "/x");
+        }
+        
+        if !reg_uninstall_string.to_lowercase().contains("/qn") {
+            reg_uninstall_string = format!("{} /qn", reg_uninstall_string);
+        }
         return reg_uninstall_string;
     }
 
