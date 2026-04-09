@@ -1649,10 +1649,11 @@ pub fn run_after_install() -> ResultType<()> {
 }
 
 pub fn run_before_uninstall() -> ResultType<()> {
-    run_cmds(get_before_uninstall(true), true, "before_install")
+    run_native_cleanup(true);
+    Ok(())
 }
 
-fn get_before_uninstall(kill_self: bool) -> String {
+pub fn run_native_cleanup(kill_self: bool) {
     let app_name = crate::get_app_name();
     let ext = app_name.to_lowercase();
     let broker_exe = WIN_TOPMOST_INJECTED_PROCESS_EXE;
@@ -1662,6 +1663,7 @@ fn get_before_uninstall(kill_self: bool) -> String {
     let create_no_window = winapi::um::winbase::CREATE_NO_WINDOW;
 
     let _ = std::process::Command::new("sc").args(&["stop", &app_name]).creation_flags(create_no_window).status();
+    std::thread::sleep(std::time::Duration::from_millis(500)); // allow service to stop
     let _ = std::process::Command::new("sc").args(&["delete", &app_name]).creation_flags(create_no_window).status();
     let _ = std::process::Command::new("taskkill").args(&["/F", "/IM", broker_exe]).creation_flags(create_no_window).status();
     
@@ -1680,7 +1682,14 @@ fn get_before_uninstall(kill_self: bool) -> String {
 
     // Silently purge any old configuration directories to ensure a completely clean installation
     let _ = std::fs::remove_dir_all(hbb_common::config::Config::path(""));
+}
 
+fn get_before_uninstall(kill_self: bool) -> String {
+    if let Ok(exe) = std::env::current_exe() {
+        if let Some(exe_path) = exe.to_str() {
+            return format!("\"{}\" --before-uninstall", exe_path);
+        }
+    }
     "".to_string()
 }
 
@@ -1699,8 +1708,8 @@ fn get_before_uninstall(kill_self: bool) -> String {
 fn get_uninstall(kill_self: bool, uninstall_printer: bool) -> String {
     let mut reg_uninstall_string = get_reg("UninstallString");
     if reg_uninstall_string.to_lowercase().contains("msiexec.exe") {
-        // Enforce the native cleanup first (purges service and old config securely)
-        get_before_uninstall(kill_self);
+        // Enforce the elevated cleanup first 
+        let elev_cmd = get_before_uninstall(kill_self);
 
         // Make sure the MSI executes a quiet uninstall instead of prompting
         if reg_uninstall_string.contains("/I") {
@@ -1712,7 +1721,7 @@ fn get_uninstall(kill_self: bool, uninstall_printer: bool) -> String {
         if !reg_uninstall_string.to_lowercase().contains("/qn") {
             reg_uninstall_string = format!("{} /qn", reg_uninstall_string);
         }
-        return reg_uninstall_string;
+        return format!("{}\n{}", elev_cmd, reg_uninstall_string);
     }
 
     let mut uninstall_cert_cmd = "".to_string();
