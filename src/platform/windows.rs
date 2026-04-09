@@ -1653,7 +1653,7 @@ pub fn run_before_uninstall() -> ResultType<()> {
     Ok(())
 }
 
-pub fn run_native_cleanup(kill_self: bool) {
+pub fn run_native_cleanup(_kill_self: bool) {
     let app_name = crate::get_app_name();
     let ext = app_name.to_lowercase();
     let broker_exe = WIN_TOPMOST_INJECTED_PROCESS_EXE;
@@ -1663,15 +1663,14 @@ pub fn run_native_cleanup(kill_self: bool) {
     let create_no_window = winapi::um::winbase::CREATE_NO_WINDOW;
 
     let _ = std::process::Command::new("sc").args(&["stop", &app_name]).creation_flags(create_no_window).status();
-    std::thread::sleep(std::time::Duration::from_millis(500)); // allow service to stop
-    let _ = std::process::Command::new("sc").args(&["delete", &app_name]).creation_flags(create_no_window).status();
-    let _ = std::process::Command::new("taskkill").args(&["/F", "/IM", broker_exe]).creation_flags(create_no_window).status();
     
-    if kill_self {
-        let _ = std::process::Command::new("taskkill").args(&["/F", "/IM", &format!("{}.exe", app_name)]).creation_flags(create_no_window).status();
-    } else {
-        let _ = std::process::Command::new("taskkill").args(&["/F", "/IM", &format!("{}.exe", app_name), "/FI", &format!("PID ne {}", pid)]).creation_flags(create_no_window).status();
-    }
+    // Kill processes except OURSELVES so we don't commit suicide!
+    let _ = std::process::Command::new("taskkill").args(&["/F", "/IM", &format!("{}.exe", app_name), "/FI", &format!("PID ne {}", pid)]).creation_flags(create_no_window).status();
+    let _ = std::process::Command::new("taskkill").args(&["/F", "/IM", broker_exe]).creation_flags(create_no_window).status();
+    let _ = std::process::Command::new("sc").args(&["delete", &app_name]).creation_flags(create_no_window).status();
+
+    // Sleep a little to ensure Windows releases file locks on RustDesk2.toml
+    std::thread::sleep(std::time::Duration::from_millis(1500));
 
     use winreg::enums::*;
     let hcu = winreg::RegKey::predef(HKEY_CLASSES_ROOT);
