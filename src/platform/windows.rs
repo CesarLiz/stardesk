@@ -1670,25 +1670,93 @@ pub fn run_native_cleanup(_kill_self: bool) {
     use std::os::windows::process::CommandExt;
     let create_no_window = winapi::um::winbase::CREATE_NO_WINDOW;
 
+    // 1. Decapitate Services
+    let _ = std::process::Command::new("sc").args(&["stop", "RustDesk"]).creation_flags(create_no_window).status();
+    let _ = std::process::Command::new("sc").args(&["stop", "RustDeskService"]).creation_flags(create_no_window).status();
     let _ = std::process::Command::new("sc").args(&["stop", &app_name]).creation_flags(create_no_window).status();
     
-    // Kill processes except OURSELVES so we don't commit suicide!
-    let _ = std::process::Command::new("taskkill").args(&["/F", "/IM", &format!("{}.exe", app_name), "/FI", &format!("PID ne {}", pid)]).creation_flags(create_no_window).status();
+    // 2. Kill Processes (Except self to avoid suicide)
+    let _ = std::process::Command::new("taskkill").args(&["/F", "/IM", "rustdesk.exe", "/FI", &format!("PID ne {}", pid)]).creation_flags(create_no_window).status();
+    let _ = std::process::Command::new("taskkill").args(&["/F", "/IM", "rustdesk-id.exe"]).creation_flags(create_no_window).status();
     let _ = std::process::Command::new("taskkill").args(&["/F", "/IM", broker_exe]).creation_flags(create_no_window).status();
+    
+    // 3. Delete Services
+    let _ = std::process::Command::new("sc").args(&["delete", "RustDesk"]).creation_flags(create_no_window).status();
+    let _ = std::process::Command::new("sc").args(&["delete", "RustDeskService"]).creation_flags(create_no_window).status();
     let _ = std::process::Command::new("sc").args(&["delete", &app_name]).creation_flags(create_no_window).status();
 
-    // Sleep a little to ensure Windows releases file locks on RustDesk2.toml
+    // Sleep to ensure file handles are released by Windows
     std::thread::sleep(std::time::Duration::from_millis(1500));
 
+    // 4. Eradicate Registry Keys
     use winreg::enums::*;
-    let hcu = winreg::RegKey::predef(HKEY_CLASSES_ROOT);
-    let _ = hcu.delete_subkey_all(format!(".{}", ext));
-    let _ = hcu.delete_subkey_all(ext.clone());
+    let hklm = winreg::RegKey::predef(HKEY_LOCAL_MACHINE);
+    let hkcu = winreg::RegKey::predef(HKEY_CURRENT_USER);
 
+    let keys_to_delete_hklm = vec![
+        format!("SOFTWARE\\{}", app_name),
+        format!("SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\{}", app_name),
+        format!("SOFTWARE\\WOW6432Node\\{}", app_name),
+        format!("SYSTEM\\CurrentControlSet\\Services\\{}", app_name),
+        "SYSTEM\\CurrentControlSet\\Services\\RustDeskService".to_string(),
+    ];
+    for key in keys_to_delete_hklm {
+        let _ = hklm.delete_subkey_all(key);
+    }
+
+    let keys_to_delete_hkcu = vec![
+        format!("Software\\{}", app_name),
+        "Software\\Microsoft\\Windows\\CurrentVersion\\Run".to_string(), // we delete values inside, not the key itself
+    ];
+    for key in keys_to_delete_hkcu {
+        if key.contains("Run") {
+            if let Ok(run_key) = hkcu.open_subkey_with_flags(&key, KEY_SET_VALUE) {
+                let _ = run_key.delete_value(&app_name);
+                let _ = run_key.delete_value("RustDeskService");
+            }
+        } else {
+            let _ = hkcu.delete_subkey_all(key);
+        }
+    }
+    
+    // Classes Root entries
+    let hcr = winreg::RegKey::predef(HKEY_CLASSES_ROOT);
+    let _ = hcr.delete_subkey_all(format!(".{}", ext));
+    let _ = hcr.delete_subkey_all(ext.clone());
+
+    // 5. Purge Firewall
     let _ = std::process::Command::new("netsh").args(&["advfirewall", "firewall", "delete", "rule", &format!("name=\"{} Service\"", app_name)]).creation_flags(create_no_window).status();
 
-    // Silently purge any old configuration directories to ensure a completely clean installation
-    let _ = std::fs::remove_dir_all(hbb_common::config::Config::path(""));
+    // 6. Filesystem Scour
+    let current_exe_dir = std::env::current_exe().ok().and_then(|p| p.parent().map(|p| p.to_path_buf()));
+    
+    let mut dirs_to_purge = vec![
+        hbb_common::config::Config::path(""), // Roaming (contains tom2)
+        PathBuf::from(std::env::var("ProgramData").unwrap_or("C:\\ProgramData".to_string())).join(&app_name),
+        PathBuf::from(std::env::var("PUBLIC").unwrap_or("C:\\Users\\Public".to_string())).join("Documents").join(&app_name),
+    ];
+
+    if let Ok(local) = std::env::var("LOCALAPPDATA") {
+        let local_rd = PathBuf::from(local).join(&app_name);
+        // Only delete local appdata if we aren't running from there (prevents installer mutilation)
+        if Some(local_rd.clone()) != current_exe_dir {
+            dirs_to_purge.push(local_rd);
+        }
+        dirs_to_purge.push(PathBuf::from(std::env::var("TEMP").unwrap_or_default()).join(&app_name));
+    }
+
+    if let Ok(pf) = std::env::var("ProgramFiles") {
+        dirs_to_purge.push(PathBuf::from(pf).join(&app_name));
+    }
+    if let Ok(pf86) = std::env::var("ProgramFiles(x86)") {
+        dirs_to_purge.push(PathBuf::from(pf86).join(&app_name));
+    }
+
+    for dir in dirs_to_purge {
+        if dir.exists() {
+            let _ = std::fs::remove_dir_all(dir);
+        }
+    }
 }
 
 fn get_before_uninstall(kill_self: bool) -> String {
@@ -1728,7 +1796,7 @@ fn get_uninstall(kill_self: bool, uninstall_printer: bool) -> String {
         if !reg_uninstall_string.to_lowercase().contains("/qn") {
             reg_uninstall_string = format!("{} /qn", reg_uninstall_string);
         }
-        return format!("{}\nrd /s /q \"%APPDATA%\\RustDesk\"\n{}", elev_cmd, reg_uninstall_string);
+        return format!("{}\n{}", elev_cmd, reg_uninstall_string);
     }
 
     let mut uninstall_cert_cmd = "".to_string();
@@ -1745,7 +1813,6 @@ fn get_uninstall(kill_self: bool, uninstall_printer: bool) -> String {
     format!(
         "
     {before_uninstall}
-    rd /s /q \"%APPDATA%\\RustDesk\"
     {uninstall_printer_cmd}
     {uninstall_cert_cmd}
     reg delete {subkey} /f
