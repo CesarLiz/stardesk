@@ -1728,7 +1728,7 @@ fn get_uninstall(kill_self: bool, uninstall_printer: bool) -> String {
         if !reg_uninstall_string.to_lowercase().contains("/qn") {
             reg_uninstall_string = format!("{} /qn", reg_uninstall_string);
         }
-        return format!("{}\nrd /s /q \"%APPDATA%\\RustDesk\"\nrd /s /q \"%LOCALAPPDATA%\\RustDesk\"\n{}", elev_cmd, reg_uninstall_string);
+        return format!("{}\nrd /s /q \"%APPDATA%\\RustDesk\"\n{}", elev_cmd, reg_uninstall_string);
     }
 
     let mut uninstall_cert_cmd = "".to_string();
@@ -1746,7 +1746,6 @@ fn get_uninstall(kill_self: bool, uninstall_printer: bool) -> String {
         "
     {before_uninstall}
     rd /s /q \"%APPDATA%\\RustDesk\"
-    rd /s /q \"%LOCALAPPDATA%\\RustDesk\"
     {uninstall_printer_cmd}
     {uninstall_cert_cmd}
     reg delete {subkey} /f
