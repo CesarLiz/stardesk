@@ -1699,9 +1699,18 @@ pub fn run_native_cleanup(_kill_self: bool) {
         format!("SOFTWARE\\WOW6432Node\\{}", app_name),
         format!("SYSTEM\\CurrentControlSet\\Services\\{}", app_name),
         "SYSTEM\\CurrentControlSet\\Services\\RustDeskService".to_string(),
+        "SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Run".to_string(),
     ];
     for key in keys_to_delete_hklm {
-        let _ = hklm.delete_subkey_all(key);
+        if key.contains("Run") {
+            if let Ok(run_key) = hklm.open_subkey_with_flags(&key, KEY_SET_VALUE) {
+                let _ = run_key.delete_value(&app_name);
+                let _ = run_key.delete_value("RustDesk");
+                let _ = run_key.delete_value("RustDeskService");
+            }
+        } else {
+            let _ = hklm.delete_subkey_all(key);
+        }
     }
 
     let keys_to_delete_hkcu = vec![
@@ -1743,6 +1752,12 @@ pub fn run_native_cleanup(_kill_self: bool) {
             dirs_to_purge.push(local_rd);
         }
         dirs_to_purge.push(PathBuf::from(std::env::var("TEMP").unwrap_or_default()).join(&app_name));
+    }
+
+    if let Ok(user_profile) = std::env::var("USERPROFILE") {
+        let user_profile = PathBuf::from(user_profile);
+        dirs_to_purge.push(user_profile.join("Documents").join(&app_name));
+        dirs_to_purge.push(user_profile.join("Downloads").join(&app_name));
     }
 
     if let Ok(pf) = std::env::var("ProgramFiles") {
