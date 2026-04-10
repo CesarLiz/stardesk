@@ -1745,6 +1745,12 @@ pub fn run_native_cleanup(_kill_self: bool) {
         PathBuf::from(std::env::var("PUBLIC").unwrap_or("C:\\Users\\Public".to_string())).join("Documents").join(&app_name),
     ];
 
+    // Global Service/System profiles where configuration might hide
+    let win_dir = std::env::var("SystemRoot").unwrap_or("C:\\Windows".to_string());
+    dirs_to_purge.push(PathBuf::from(&win_dir).join("ServiceProfiles").join("LocalService").join("AppData").join("Roaming").join(&app_name));
+    dirs_to_purge.push(PathBuf::from(&win_dir).join("SysWOW64").join("config").join("systemprofile").join("AppData").join("Roaming").join(&app_name));
+    dirs_to_purge.push(PathBuf::from(&win_dir).join("System32").join("config").join("systemprofile").join("AppData").join("Roaming").join(&app_name));
+
     if let Ok(local) = std::env::var("LOCALAPPDATA") {
         let local_rd = PathBuf::from(local).join(&app_name);
         // Only delete local appdata if we aren't running from there (prevents installer mutilation)

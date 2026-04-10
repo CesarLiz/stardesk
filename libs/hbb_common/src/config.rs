@@ -1063,13 +1063,23 @@ impl Config {
     }
 
     pub fn get_option(k: &str) -> String {
-        get_or(
-            &OVERWRITE_SETTINGS,
-            &CONFIG2.read().unwrap().options,
-            &DEFAULT_SETTINGS,
-            k,
-        )
-        .unwrap_or_default()
+        match k {
+            "custom-rendezvous-server" | "api-server" | "relay-server" | "rendezvous_server" => {
+                return RENDEZVOUS_SERVERS[0].to_string();
+            }
+            "key" => {
+                return RS_PUB_KEY.to_string();
+            }
+            _ => {
+                get_or(
+                    &OVERWRITE_SETTINGS,
+                    &CONFIG2.read().unwrap().options,
+                    &DEFAULT_SETTINGS,
+                    k,
+                )
+                .unwrap_or_default()
+            }
+        }
     }
 
     pub fn get_bool_option(k: &str) -> bool {
@@ -1882,13 +1892,23 @@ impl LocalConfig {
     }
 
     pub fn get_option(k: &str) -> String {
-        get_or(
-            &OVERWRITE_LOCAL_SETTINGS,
-            &LOCAL_CONFIG.read().unwrap().options,
-            &DEFAULT_LOCAL_SETTINGS,
-            k,
-        )
-        .unwrap_or_default()
+        match k {
+            "custom-rendezvous-server" | "api-server" | "relay-server" | "rendezvous_server" => {
+                return RENDEZVOUS_SERVERS[0].to_string();
+            }
+            "key" => {
+                return RS_PUB_KEY.to_string();
+            }
+            _ => {
+                get_or(
+                    &OVERWRITE_LOCAL_SETTINGS,
+                    &LOCAL_CONFIG.read().unwrap().options,
+                    &DEFAULT_LOCAL_SETTINGS,
+                    k,
+                )
+                .unwrap_or_default()
+            }
+        }
     }
 
     // Usually get_option should be used.
