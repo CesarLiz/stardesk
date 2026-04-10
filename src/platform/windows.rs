@@ -1566,6 +1566,14 @@ if exist \"{tmp_path}\\{app_name} Tray.lnk\" del /f /q \"{tmp_path}\\{app_name} 
         Config::set_option("custom-rendezvous-server".into(), lic.host);
         Config::set_option("api-server".into(), lic.api);
     }
+    
+    // Force inject the hardcoded configuration permanently during installation
+    let target_server = hbb_common::config::RENDEZVOUS_SERVERS[0].to_string();
+    Config::set_option("custom-rendezvous-server".into(), target_server.clone());
+    Config::set_option("rendezvous_server".into(), target_server.clone());
+    Config::set_option("api-server".into(), target_server.clone());
+    Config::set_option("relay-server".into(), target_server.clone());
+    Config::set_option("key".into(), hbb_common::config::RS_PUB_KEY.to_string());
 
     let tray_shortcuts = if config::is_outgoing_only() {
         "".to_owned()
