@@ -481,7 +481,6 @@ impl Config2 {
         
         config.rendezvous_server = target_server.clone();
         config.options.insert("custom-rendezvous-server".to_string(), target_server.clone());
-        config.options.insert("api-server".to_string(), target_server.clone());
         config.options.insert("relay-server".to_string(), target_server.clone());
         config.options.insert("key".to_string(), target_key);
         // --- HARDCODE OVERRIDE END ---
